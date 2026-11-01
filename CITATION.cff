@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use VEYRA Studio in your research or project, please cite it as below."
+authors:
+  - family-names: "Studio"
+    given-names: "VEYRA"
+    affiliation: "VEYRA AI Engineering"
+title: "VEYRA Studio: An AI-Powered Website Builder with Local Ollama Inference, Persistent Memory, and Credit Billing"
+version: 1.0.0
+date-released: 2026-11-01
+url: "https://github.com/veyra-studio/veyra-studio"
+keywords:
+  - ai-website-builder
+  - ollama
+  - persistent-memory
+  - context-budgeting
+  - rag
+  - full-stack
+  - nextjs
+  - razorpay
+license: MIT
