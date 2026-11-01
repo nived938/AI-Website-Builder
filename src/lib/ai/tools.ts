@@ -290,35 +290,91 @@ export function extractStructuredJsonAction(content: string): Array<{
   args: Record<string, unknown>;
 }> {
   const actions: Array<{ name: string; args: Record<string, unknown> }> = [];
-  
-  // Look for JSON code blocks
-  const jsonBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/g;
-  let match: RegExpExecArray | null;
+  const candidates: string[] = [];
+  const codeBlockRegex = /\`\`\`(?:json)?\s*([\s\S]*?)\s*\`\`\`/gi;
+  let codeMatch: RegExpExecArray | null;
 
-  while ((match = jsonBlockRegex.exec(content)) !== null) {
-    try {
-      const parsed = JSON.parse(match[1]);
-      if (parsed && typeof parsed === "object") {
-        if (parsed.action && typeof parsed.action === "string") {
-          actions.push({
-            name: parsed.action,
-            args: parsed.params || parsed.arguments || {},
-          });
-        } else if (Array.isArray(parsed.actions)) {
-          for (const a of parsed.actions) {
-            if (a.action && typeof a.action === "string") {
-              actions.push({
-                name: a.action,
-                args: a.params || a.arguments || {},
-              });
-            }
-          }
-        }
+  while ((codeMatch = codeBlockRegex.exec(content)) !== null) {
+    candidates.push(codeMatch[1].trim());
+  }
+
+  // Some local models return a tool object as plain JSON instead of native tool_calls.
+  candidates.push(content.trim());
+
+  // Inspect balanced JSON objects embedded in explanatory text.
+  let objectStart = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index];
+    if (objectStart < 0) {
+      if (character === "{") {
+        objectStart = index;
+        depth = 1;
       }
-    } catch {
-      // Non-JSON code block, ignore
+      continue;
+    }
+
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+
+    if (character === '"') inString = true;
+    else if (character === "{") depth += 1;
+    else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        candidates.push(content.slice(objectStart, index + 1));
+        objectStart = -1;
+      }
     }
   }
 
-  return actions;
+  const addAction = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const parsed = value as Record<string, unknown>;
+    const functionObject =
+      parsed.function && typeof parsed.function === "object"
+        ? parsed.function as Record<string, unknown>
+        : undefined;
+    const nameValue = parsed.action ?? parsed.name ?? parsed.tool ?? functionObject?.name;
+    const argsValue =
+      parsed.params ??
+      parsed.parameters ??
+      parsed.arguments ??
+      functionObject?.arguments;
+
+    if (typeof nameValue === "string" && argsValue && typeof argsValue === "object" && !Array.isArray(argsValue)) {
+      actions.push({
+        name: nameValue,
+        args: argsValue as Record<string, unknown>,
+      });
+    }
+
+    if (Array.isArray(parsed.actions)) parsed.actions.forEach(addAction);
+    if (Array.isArray(parsed.tool_calls)) parsed.tool_calls.forEach(addAction);
+  };
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const parsed: unknown = JSON.parse(candidate);
+      if (Array.isArray(parsed)) parsed.forEach(addAction);
+      else addAction(parsed);
+    } catch {
+      // Invalid or non-tool JSON is ordinary assistant text, never executable.
+    }
+  }
+
+  return actions.filter((action) => {
+    const key = action.name + ":" + JSON.stringify(action.args);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
