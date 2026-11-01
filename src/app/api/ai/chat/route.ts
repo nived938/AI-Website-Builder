@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
               // with additional files or explain an actual failure.
               modelMessages.push({
                 role: "tool",
-                name: toolName,
+                tool_name: toolName,
                 content: JSON.stringify(result).slice(0, 30000),
               });
             }
