@@ -3,6 +3,7 @@ import { getEnv } from "@/lib/env";
 export interface OllamaMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  name?: string;
   images?: string[];
   tool_calls?: Array<{
     function: {
